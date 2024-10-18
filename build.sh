@@ -1,7 +1,8 @@
 #!/usr/bin/bash
-
+git submodule update --init robin-hood-hashing/
 mkdir -p thirdparty/install
 export PATH_TO_INSTALL="$PWD/thirdparty/install"
+
 pushd thirdparty
   # Clone LLVM project.
   git clone --depth=1 https://github.com/llvm/llvm-project.git
@@ -34,7 +35,7 @@ pushd thirdparty
   rm -rf llvm-project
 popd
 
-git submodule update --init robin-hood-hashing/
+export PATH_TO_INSTALL="$PWD/thirdparty/install"
 export PATH="$PATH_TO_INSTALL/bin:$PATH"
 export LD_LIBRARY_PATH="$PATH_TO_INSTALL/lib:$LD_LIBRARY_PATH"
 hash -r
