@@ -37,4 +37,5 @@ popd
 git submodule update --init robin-hood-hashing/
 export PATH="$PATH_TO_INSTALL/bin:$PATH"
 export LD_LIBRARY_PATH="$PATH_TO_INSTALL/lib:$LD_LIBRARY_PATH"
+hash -r
 LLVM_CONFIG="$PATH_TO_INSTALL/bin/llvm-config" CC="$PATH_TO_INSTALL/bin/clang" CXX="$PATH_TO_INSTALL/bin/clang++" make clean all -j 32
