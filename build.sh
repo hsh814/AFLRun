@@ -6,8 +6,7 @@ pushd thirdparty
   # Clone LLVM project.
   git clone --depth=1 https://github.com/llvm/llvm-project.git
   pushd llvm-project
-    cd llvm-project
-    git fetch origin --depth=1 4a2c05b05ed07f1f620e94f6524a8b4b2760a0b1 && \
+    git fetch origin --depth=1 4a2c05b05ed07f1f620e94f6524a8b4b2760a0b1
     git reset --hard 4a2c05b05ed07f1f620e94f6524a8b4b2760a0b1
 
     # Download binutils.
@@ -32,7 +31,10 @@ pushd thirdparty
       make install
     popd
   popd
+  rm -rf llvm-project
 popd
+
+git submodule update --init robin-hood-hashing/
 export PATH="$PATH_TO_INSTALL/bin:$PATH"
 export LD_LIBRARY_PATH="$PATH_TO_INSTALL/lib:$LD_LIBRARY_PATH"
-CC=clang CXX=clang++ make clean all -j 32
+LLVM_CONFIG="$PATH_TO_INSTALL/bin/llvm-config" CC="$PATH_TO_INSTALL/bin/clang" CXX="$PATH_TO_INSTALL/bin/clang++" make clean all -j 32
