@@ -1225,3 +1225,76 @@ void aflrun_recover_virgin(afl_state_t* afl) {
     virgin_ctx[idx / 8] |= 1 << (idx % 8);
   }
 }
+
+pid_t child_pid;  // Global variable to store child process ID
+
+// Timeout handler function
+void timeout_handler(int sig) {
+  if (child_pid > 0) {
+    kill(child_pid, SIGKILL);  // Kill the child process
+    waitpid(child_pid, NULL, 0);
+  }
+}
+
+u8 fuzz_run_valuation_binary(afl_state_t *afl, u8 *out_buf, u32 len, u8 *env_opt, u8 is_crash) {
+  if (!getenv("PACFIX_VAL_EXE")) return 0;
+  if(!getenv("PACFIX_COV_DIR")) return 0;
+  u8 *valexe = getenv("PACFIX_VAL_EXE");
+  u8 *covdir = getenv("PACFIX_COV_DIR");
+  u8 *tmpfile = alloc_printf("%s/%s", covdir, "tmpfile");
+  chmod(tmpfile,0777);
+  u8 error_code = remove(tmpfile);
+  u8 *tmpfile_env = alloc_printf("PACFIX_TMPFILE=%s", tmpfile);
+  child_pid = fork();
+  if (child_pid < 0) { 
+    PFATAL("fork failed");
+    return 0;
+  }
+  if (!child_pid) {
+    // Child process
+    u8 *envp[] = {
+      "ASAN_OPTIONS=abort_on_error=1:halt_on_error=1:detect_leaks=0:symbolize=0:allocator_may_return_null=1",
+      "MSAN_OPTIONS=exit_code=86:halt_on_error=1:symbolize=0:msan_track_origins=0",
+      "UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1:exit_code=54:print_stacktrace=1",
+      tmpfile_env,
+      env_opt,
+      0
+    };
+    execve(valexe, afl->argv, envp);
+    exit(0);
+  } else {
+    signal(SIGALRM, timeout_handler);
+    struct itimerval it;
+    it.it_value.tv_sec = 10;
+    it.it_value.tv_usec = 0;
+    setitimer(ITIMER_REAL, &it, NULL);
+
+    s32 status;
+    waitpid(child_pid, &status, 0);
+    if (WIFEXITED(status)) { return 0; }
+    if (WIFSIGNALED(status)) { return 0; }
+
+    getitimer(ITIMER_REAL, &it);
+    u64 exec_ms = (u64) 10 - (it.it_value.tv_sec + it.it_value.tv_usec / 1000000);
+    it.it_value.tv_sec = 0;
+    it.it_value.tv_usec = 0;
+    setitimer(ITIMER_REAL, &it, NULL);
+    signal(SIGALRM, SIG_DFL);
+  }
+  // Get valuation
+  ck_free(tmpfile_env);
+  if (access(tmpfile, F_OK) != 0) {
+    ck_free(tmpfile);
+    return 0;
+  }
+  u8 *save_file = alloc_printf("%s/memory/%s/id:%06llu", afl->out_dir, is_crash ? "neg" : "pos", is_crash ? afl->total_neg, afl->total_pos);
+  rename(tmpfile, save_file);
+  ck_free(save_file);
+  ck_free(tmpfile);
+  if (is_crash) {
+    afl->total_neg++;
+  } else {
+    afl->total_pos++;
+  }
+  return 1;
+}

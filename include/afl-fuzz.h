@@ -839,6 +839,8 @@ typedef struct afl_state {
 
   char* temp_dir;
 
+  u64 total_neg, total_pos;
+
 } afl_state_t;
 
 struct custom_mutator {
@@ -1197,6 +1199,7 @@ u8   trim_case(afl_state_t *, struct queue_entry *, u8 *);
 u8   common_fuzz_stuff(afl_state_t *, u8 *, u32);
 fsrv_run_result_t fuzz_run_target(afl_state_t *, afl_forkserver_t *fsrv, u32);
 void aflrun_recover_virgin(afl_state_t* afl);
+u8 fuzz_run_valuation_binary(afl_state_t *afl, u8 *out_buf, u32 len, u8 *env_opt, u8 is_crash);
 
 /* Fuzz one */
 
