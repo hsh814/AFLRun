@@ -1236,6 +1236,24 @@ void timeout_handler(int sig) {
   }
 }
 
+u32 hash_file(u8 *filename) {
+
+  FILE *file = fopen(filename, "r");
+  if (!file) return 0;
+  fseek(file, 0, SEEK_END);
+  u64 length = ftell(file);
+  fseek(file, 0, SEEK_SET);
+  u64 max_read = 1 << 25; // 32MB
+  length = length < max_read ? length : max_read;
+  u8 *buf = ck_alloc_nozero(length);
+  fread(buf, 1, length, file);
+  fclose(file);
+  u32 hash = hash32(buf, length, HASH_CONST);
+  ck_free(buf);
+  return hash;
+
+}
+
 u8 fuzz_run_valuation_binary(afl_state_t *afl, u8 *out_buf, u32 len, u8 *env_opt, u8 is_crash) {
   if (!getenv("PACFIX_VAL_EXE")) return 0;
   if(!getenv("PACFIX_COV_DIR")) return 0;
@@ -1287,6 +1305,13 @@ u8 fuzz_run_valuation_binary(afl_state_t *afl, u8 *out_buf, u32 len, u8 *env_opt
     ck_free(tmpfile);
     return 0;
   }
+  u32 hash = hash_file(tmpfile);
+  struct key_value_pair *kvp = hashmap_get(afl->val_map, hash);
+  if (kvp) {
+    ck_free(tmpfile);
+    return 0;
+  }
+  hashmap_insert(afl->val_map, hash, 1);
   u8 *save_file = alloc_printf("%s/memory/%s/id:%06llu", afl->out_dir, is_crash ? "neg" : "pos", is_crash ? afl->total_neg, afl->total_pos);
   rename(tmpfile, save_file);
   ck_free(save_file);
