@@ -1230,6 +1230,7 @@ pid_t child_pid;  // Global variable to store child process ID
 
 // Timeout handler function
 void timeout_handler(int sig) {
+  (void)(sig);
   if (child_pid > 0) {
     kill(child_pid, SIGKILL);  // Kill the child process
     waitpid(child_pid, NULL, 0);
@@ -1257,11 +1258,13 @@ u32 hash_file(u8 *filename) {
 u8 fuzz_run_valuation_binary(afl_state_t *afl, u8 *out_buf, u32 len, u8 *env_opt, u8 is_crash) {
   if (!getenv("PACFIX_VAL_EXE")) return 0;
   if(!getenv("PACFIX_COV_DIR")) return 0;
+  (void)out_buf;
+  (void)len;
   u8 *valexe = getenv("PACFIX_VAL_EXE");
   u8 *covdir = getenv("PACFIX_COV_DIR");
   u8 *tmpfile = alloc_printf("%s/%s", covdir, "tmpfile");
-  chmod(tmpfile,0777);
-  u8 error_code = remove(tmpfile);
+  chmod(tmpfile, 0777);
+  remove(tmpfile);
   u8 *tmpfile_env = alloc_printf("PACFIX_TMPFILE=%s", tmpfile);
   child_pid = fork();
   if (child_pid < 0) { 
@@ -1270,7 +1273,7 @@ u8 fuzz_run_valuation_binary(afl_state_t *afl, u8 *out_buf, u32 len, u8 *env_opt
   }
   if (!child_pid) {
     // Child process
-    u8 *envp[] = {
+    const char *envp[] = {
       "ASAN_OPTIONS=abort_on_error=1:halt_on_error=1:detect_leaks=0:symbolize=0:allocator_may_return_null=1",
       "MSAN_OPTIONS=exit_code=86:halt_on_error=1:symbolize=0:msan_track_origins=0",
       "UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1:exit_code=54:print_stacktrace=1",
@@ -1293,7 +1296,7 @@ u8 fuzz_run_valuation_binary(afl_state_t *afl, u8 *out_buf, u32 len, u8 *env_opt
     if (WIFSIGNALED(status)) { return 0; }
 
     getitimer(ITIMER_REAL, &it);
-    u64 exec_ms = (u64) 10 - (it.it_value.tv_sec + it.it_value.tv_usec / 1000000);
+    // u64 exec_ms = (u64) 10 - (it.it_value.tv_sec + it.it_value.tv_usec / 1000000);
     it.it_value.tv_sec = 0;
     it.it_value.tv_usec = 0;
     setitimer(ITIMER_REAL, &it, NULL);
@@ -1311,8 +1314,8 @@ u8 fuzz_run_valuation_binary(afl_state_t *afl, u8 *out_buf, u32 len, u8 *env_opt
     ck_free(tmpfile);
     return 0;
   }
-  hashmap_insert(afl->val_map, hash, 1);
-  u8 *save_file = alloc_printf("%s/memory/%s/id:%06llu", afl->out_dir, is_crash ? "neg" : "pos", is_crash ? afl->total_neg, afl->total_pos);
+  hashmap_insert(afl->val_map, hash, (void*)1);
+  u8 *save_file = alloc_printf("%s/memory/%s/id:%06llu", afl->out_dir, is_crash ? "neg" : "pos", is_crash ? afl->total_neg : afl->total_pos);
   rename(tmpfile, save_file);
   ck_free(save_file);
   ck_free(tmpfile);
@@ -1322,4 +1325,118 @@ u8 fuzz_run_valuation_binary(afl_state_t *afl, u8 *out_buf, u32 len, u8 *env_opt
     afl->total_pos++;
   }
   return 1;
+}
+
+struct hashmap* hashmap_create(u32 table_size) {
+  struct hashmap* map = ck_alloc(sizeof(struct hashmap));
+  if (map == NULL) {
+    printf("Memory allocation failed.\n");
+    exit(EXIT_FAILURE);
+  }
+  map->size = 0;
+  map->table_size = table_size;
+  map->table = ck_alloc(table_size * sizeof(struct key_value_pair*));
+  if (map->table == NULL) {
+    printf("Memory allocation failed.\n");
+    exit(EXIT_FAILURE);
+  }
+  for (u32 i = 0; i < table_size; i++) {
+    map->table[i] = NULL;
+  }
+  return map;
+}
+
+u32 hashmap_fit(u32 key, u32 table_size) {
+  return key % table_size;
+}
+
+void hashmap_resize(struct hashmap *map) {
+
+  u32 new_table_size = map->table_size * 2;
+  struct key_value_pair **new_table = ck_alloc(new_table_size * sizeof(struct key_value_pair*));
+  if (new_table == NULL) {
+    printf("Memory allocation failed.\n");
+    exit(EXIT_FAILURE);
+  }
+  for (u32 i = 0; i < map->table_size; i++) {
+    struct key_value_pair* pair = map->table[i];
+    while (pair != NULL) {
+      struct key_value_pair *next = pair->next;
+      u32 index = hashmap_fit(pair->key, new_table_size);
+      pair->next = new_table[index];
+      new_table[index] = pair;
+      pair = next;
+    }
+  }
+  ck_free(map->table);
+  map->table = new_table;
+  map->table_size = new_table_size;
+
+}
+
+u32 hashmap_size(struct hashmap* map) {
+  return map->size;
+}
+
+// Function to insert a key-value pair into the hash map
+void hashmap_insert(struct hashmap* map, u32 key, void* value) {
+  u32 index = hashmap_fit(key, map->table_size);
+  struct key_value_pair* newPair = ck_alloc(sizeof(struct key_value_pair));
+  if (newPair == NULL) {
+    printf("Memory allocation failed.\n");
+    exit(EXIT_FAILURE);
+  }
+  newPair->key = key;
+  newPair->value = value;
+  newPair->next = map->table[index];
+  map->table[index] = newPair;
+  map->size++;
+  if (map->size > map->table_size / 2) {
+    hashmap_resize(map);
+  }
+}
+
+void hashmap_remove(struct hashmap *map, u32 key) {
+  u32 index = hashmap_fit(key, map->table_size);
+  struct key_value_pair* pair = map->table[index];
+  struct key_value_pair* prev = NULL;
+  while (pair != NULL) {
+    if (pair->key == key) {
+      if (!prev) {
+        map->table[index] = pair->next;
+      } else {
+        prev->next = pair->next;
+      }
+      map->size--;
+      ck_free(pair);
+      return;
+    }
+    prev = pair;
+    pair = pair->next;
+  }
+}
+
+struct key_value_pair* hashmap_get(struct hashmap* map, u32 key) {
+  u32 index = hashmap_fit(key, map->table_size);
+  struct key_value_pair* pair = map->table[index];
+  while (pair != NULL) {
+    if (pair->key == key) {
+      return pair;
+    }
+    pair = pair->next;
+  }
+  return NULL;
+}
+
+void hashmap_free(struct hashmap* map) {
+  for (u32 i = 0; i < map->table_size; i++) {
+    struct key_value_pair* pair = map->table[i];
+    while (pair != NULL) {
+      struct key_value_pair* next = pair->next;
+      ck_free(pair);
+      pair = next;
+    }
+  }
+  ck_free(map->table);
+  ck_free(map);
 }
