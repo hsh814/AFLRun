@@ -411,6 +411,7 @@ bool AFLCoverage::runOnModule(Module &M) {
   GlobalVariable *AFLPrevLoc;
   GlobalVariable *AFLPrevCaller;
   GlobalVariable *AFLContext = NULL;
+  GlobalVariable *AFLMapLastLocPtr;
 
   if (ctx_str || caller_str)
 #if defined(__ANDROID__) || defined(__HAIKU__)
@@ -470,6 +471,8 @@ bool AFLCoverage::runOnModule(Module &M) {
       M, Int32Ty, false, GlobalValue::ExternalLinkage, 0, "__afl_prev_caller",
       0, GlobalVariable::GeneralDynamicTLSModel, 0, false);
 #endif
+  AFLMapLastLocPtr = new GlobalVariable(M, PointerType::get(Int32Ty, 0), false,
+                         GlobalValue::ExternalLinkage, 0, "__afl_last_loc_ptr");
 
 #ifdef AFL_HAVE_VECTOR_INTRINSICS
   /* Create the vector shuffle mask for updating the previous block history.
@@ -708,6 +711,12 @@ bool AFLCoverage::runOnModule(Module &M) {
       else
 #endif
         CurLoc = ConstantInt::get(Int32Ty, cur_loc);
+      
+      fprintf(stderr, "Instrument last loc %s %d\n", F.getName().str().c_str(), cur_loc);
+
+      StoreInst *StoreMapLastLocPtr = IRB.CreateStore(CurLoc, AFLMapLastLocPtr);
+      StoreMapLastLocPtr->setMetadata(M.getMDKindID("nosanitize"),
+                                      MDNode::get(C, None));
 
       /* Load prev_loc */
 

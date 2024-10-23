@@ -95,6 +95,7 @@ extern ssize_t _kern_write(int fd, off_t pos, const void *buffer,
 static u8  __afl_area_initial[MAP_INITIAL_SIZE];
 static u8 *__afl_area_ptr_dummy = __afl_area_initial;
 static u8 *__afl_area_ptr_backup = __afl_area_initial;
+static u32 __afl_last_loc_dummpy = MAP_INITIAL_SIZE + 1;
 
 u8        *__afl_area_ptr = __afl_area_initial;
 u8        *__afl_dictionary;
@@ -102,6 +103,7 @@ u8        *__afl_fuzz_ptr;
 static u32 __afl_fuzz_len_dummy;
 u32       *__afl_fuzz_len = &__afl_fuzz_len_dummy;
 int        __afl_sharedmem_fuzzing __attribute__((weak));
+u32       *__afl_last_loc_ptr = &__afl_last_loc_dummpy;
 
 atomic_uchar* __afl_rbb_ptr = NULL;
 atomic_uchar* __afl_rbb_ptr_bak = NULL;
@@ -244,6 +246,7 @@ static void send_forkserver_error(int error) {
 static void __afl_map_shm_fuzz() {
 
   char *id_str = getenv(SHM_FUZZ_ENV_VAR);
+  char *id_last_str = getenv(SHM_LAST_ENV_VAR);
 
   if (__afl_debug) {
 
@@ -254,6 +257,7 @@ static void __afl_map_shm_fuzz() {
   if (id_str) {
 
     u8 *map = NULL;
+    u32 *map_last = NULL;
 
 #ifdef USEMMAP
     const char *shm_file_path = id_str;
@@ -276,6 +280,9 @@ static void __afl_map_shm_fuzz() {
     u32 shm_id = atoi(id_str);
     map = (u8 *)shmat(shm_id, NULL, 0);
 
+    u32 shm_last_id = atoi(id_last_str);
+    map_last = (u32 *)shmat(shm_last_id, NULL, 0);
+
 #endif
 
     /* Whooooops. */
@@ -290,6 +297,7 @@ static void __afl_map_shm_fuzz() {
 
     __afl_fuzz_len = (u32 *)map;
     __afl_fuzz_ptr = map + sizeof(u32);
+    __afl_last_loc_ptr = map_last;
 
     if (__afl_debug) {
 
@@ -341,8 +349,10 @@ static void __afl_map_shm(void) {
 
   // if we are not running in afl ensure the map exists
   if (!__afl_area_ptr) { __afl_area_ptr = __afl_area_ptr_dummy; }
+  if (!__afl_last_loc_ptr) { __afl_last_loc_ptr = &__afl_last_loc_dummpy; }
 
   char *id_str = getenv(SHM_ENV_VAR);
+  char *id_last_str = getenv(SHM_LAST_ENV_VAR);
   char *rbb_id_str = getenv(SHM_RBB_ENV_VAR);
   char *rf_id_str = getenv(SHM_RF_ENV_VAR);
   char *tr_id_str = getenv(SHM_TR_ENV_VAR);
@@ -372,6 +382,15 @@ static void __afl_map_shm(void) {
   SHMAT_AFLRUN(vtr)
   SHMAT_AFLRUN(tt)
   SHMAT_AFLRUN(div)
+  if (id_last_str) {
+    u32 shm_last_id = atoi(id_last_str);
+    __afl_last_loc_ptr = shmat(shm_last_id, NULL, 0);
+    if (__afl_last_loc_ptr == (void *)-1) {
+      send_forkserver_error(FS_ERROR_SHMAT);
+      perror("shmat for aflrun map");
+      _exit(1);
+    }
+  }
 
 #undef SHMAT_AFLRUN
 

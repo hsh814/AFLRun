@@ -255,6 +255,7 @@ class ModuleSanitizerCoverageLTO
   LLVMContext                     *Ct = NULL;
   Module                          *Mo = NULL;
   GlobalVariable                  *AFLMapPtr = NULL;
+  GlobalVariable                  *AFLLastLocPtr = NULL;
   Value                           *MapPtrFixed = NULL;
   std::ofstream                    dFile;
   size_t                           found = 0;
@@ -536,6 +537,9 @@ bool ModuleSanitizerCoverageLTO::instrumentModule(
         ConstantExpr::getIntToPtr(MapAddr, PointerType::getUnqual(Int8Tyi));
 
   }
+  fprintf(stderr, "map_addr = %lx, last_loc\n", map_addr);
+  AFLLastLocPtr = new GlobalVariable(
+      M, PointerType::get(Int32Ty, 0), false, GlobalValue::ExternalLinkage, 0, "__afl_last_loc_ptr");
 
   Zero = ConstantInt::get(Int8Tyi, 0);
   One = ConstantInt::get(Int8Tyi, 1);
@@ -1699,6 +1703,15 @@ void ModuleSanitizerCoverageLTO::InjectCoverageAtBlock(Function   &F,
     /* Set the ID of the inserted basic block */
 
     ConstantInt *CurLoc = ConstantInt::get(Int32Tyi, afl_global_id);
+
+    LoadInst *LastLocPtr =
+        IRB.CreateLoad(PointerType::get(Int32Ty, 0), AFLLastLocPtr);
+    ModuleSanitizerCoverageLTO::SetNoSanitizeMetadata(LastLocPtr);
+    Value *LastLocIdx =
+        IRB.CreateGEP(Int32Ty, LastLocPtr, ConstantInt::get(Int32Tyi, 0));
+    StoreInst *LastLocStore = IRB.CreateStore(CurLoc, LastLocIdx);
+    ModuleSanitizerCoverageLTO::SetNoSanitizeMetadata(LastLocStore);
+    fprintf(stderr, "cur_loc = %d\n", afl_global_id);
 
     /* Load SHM pointer */
 

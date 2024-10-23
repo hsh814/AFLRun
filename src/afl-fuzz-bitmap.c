@@ -514,6 +514,15 @@ save_if_interesting(afl_state_t *afl, void *mem, u32 len, u8 fault, u8 inc) {
   s32 fd;
   u64 cksum = 0;
 
+  if (fault == FSRV_RUN_OK || fault == FSRV_RUN_CRASH) {
+
+    ACTF("Last location: %u", *afl->shm.last_loc);
+
+    if (*afl->shm.last_loc < afl->fsrv.map_size) {
+      
+    }
+  }
+
   /* Update path frequency. */
 
   /* Generating a hash on every input is super expensive. Bad idea and should

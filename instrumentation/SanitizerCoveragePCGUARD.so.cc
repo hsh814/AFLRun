@@ -204,6 +204,7 @@ class ModuleSanitizerCoverageAFL
 
   uint32_t        instr = 0, selects = 0, unhandled = 0;
   GlobalVariable *AFLMapPtr = NULL;
+  GlobalVariable *AFLLastLocPtr = NULL;
   ConstantInt    *One = NULL;
   ConstantInt    *Zero = NULL;
 
@@ -398,6 +399,10 @@ bool ModuleSanitizerCoverageAFL::instrumentModule(
   AFLMapPtr =
       new GlobalVariable(M, PointerType::get(Int8Ty, 0), false,
                          GlobalValue::ExternalLinkage, 0, "__afl_area_ptr");
+  
+  fprintf(stderr, "afl_area_ptr!!!, last_loc\n");
+  AFLLastLocPtr = new GlobalVariable(
+      M, PointerType::get(Int32Ty, 0), false, GlobalValue::ExternalLinkage, 0, "__afl_last_loc_ptr");
   One = ConstantInt::get(IntegerType::getInt8Ty(Ctx), 1);
   Zero = ConstantInt::get(IntegerType::getInt8Ty(Ctx), 0);
 
@@ -1082,6 +1087,7 @@ bool ModuleSanitizerCoverageAFL::InjectCoverage(
             auto elementld = IRB.CreateLoad(IRB.getInt32Ty(), elementptr);
             ModuleSanitizerCoverageAFL::SetNoSanitizeMetadata(elementld);
             MapPtrIdx = IRB.CreateGEP(Int8Ty, MapPtr, elementld);
+            fprintf(stderr, "elementid\n");
 
           }
 
@@ -1114,6 +1120,7 @@ bool ModuleSanitizerCoverageAFL::InjectCoverage(
             ModuleSanitizerCoverageAFL::SetNoSanitizeMetadata(StoreCtx);
 
           }
+
 
           if (!vector_cnt) {
 

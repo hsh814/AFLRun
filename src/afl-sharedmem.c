@@ -285,6 +285,12 @@ u8 *afl_shm_init(sharedmem_t *shm, size_t map_size,
 
   }
 
+  shm->shm_last_id = shmget(IPC_PRIVATE, sizeof(u32),
+                            IPC_CREAT | IPC_EXCL | DEFAULT_PERMISSION);
+  if (shm->shm_last_id < 0) {
+    PFATAL("shmget() failed, try running afl-system-config");
+  }
+  
   if (shm->cmplog_mode) {
 
     shm->cmplog_shm_id = shmget(IPC_PRIVATE, sizeof(struct cmp_map),
@@ -312,6 +318,11 @@ u8 *afl_shm_init(sharedmem_t *shm, size_t map_size,
 
     ck_free(shm_str);
 
+    char *shm_last_str = alloc_printf("%d", shm->shm_last_id);
+    setenv(SHM_LAST_ENV_VAR, shm_last_str, 1);
+    ck_free(shm_last_str);
+    ACTF("SHM_LAST_ENV_VAR: %s=%d", SHM_LAST_ENV_VAR, shm->shm_last_id);
+
   }
 
   if (shm->cmplog_mode && !non_instrumented_mode) {
@@ -329,6 +340,22 @@ u8 *afl_shm_init(sharedmem_t *shm, size_t map_size,
   if (shm->map == (void *)-1 || !shm->map) {
 
     shmctl(shm->shm_id, IPC_RMID, NULL);  // do not leak shmem
+
+    if (shm->cmplog_mode) {
+
+      shmctl(shm->cmplog_shm_id, IPC_RMID, NULL);  // do not leak shmem
+
+    }
+
+    PFATAL("shmat() failed");
+
+  }
+
+  shm->last_loc = shmat(shm->shm_last_id, NULL, 0);
+
+  if (shm->last_loc == (void *)-1 || !shm->last_loc) {
+
+    shmctl(shm->shm_last_id, IPC_RMID, NULL);  // do not leak shmem
 
     if (shm->cmplog_mode) {
 
