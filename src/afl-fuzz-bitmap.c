@@ -529,13 +529,17 @@ save_if_interesting(afl_state_t *afl, void *mem, u32 len, u8 fault, u8 inc) {
 
   }
 
+  if (fault == FSRV_RUN_CRASH || fault == FSRV_RUN_OK) {
+    get_valuation(afl, afl->argv, mem, len, fault == FSRV_RUN_CRASH);
+  }
+
   if (likely(fault == afl->crash_mode)) {
 
     /* Keep only if there are new bits in the map, add to queue for
        future fuzzing, etc. */
 
     size_t n = afl->fsrv.trace_targets->num;
-    afl->virgins = afl_realloc((void **)&afl->virgins, sizeof(u8*) * (n+1));
+    afl->virgins = afl_realloc((void **)&afl->virgins, sizeof(u8 *) * (n + 1));
     afl->clusters = afl_realloc((void **)&afl->clusters, sizeof(size_t) * (n+1));
     afl->virgins[0] = afl->virgin_bits;
     afl->clusters[0] = 0; // primary map is always cluster 0
@@ -561,6 +565,7 @@ save_if_interesting(afl_state_t *afl, void *mem, u32 len, u8 fault, u8 inc) {
     }
 
     /*/ DEBUG
+    ACTF("Number of targets: %d", afl->fsrv.trace_targets->num);
     printf("Targets(Interesting): ");
     for (size_t i = 0; i < n; ++i) {
       printf("%u ", afl->fsrv.trace_targets->trace[i].block);
@@ -956,3 +961,375 @@ save_if_interesting(afl_state_t *afl, void *mem, u32 len, u8 fault, u8 inc) {
 
 }
 
+// Hashmap implementation
+struct hashmap* hashmap_create(u32 table_size) {
+  struct hashmap* map = ck_alloc(sizeof(struct hashmap));
+  if (map == NULL) {
+    printf("Memory allocation failed.\n");
+    exit(EXIT_FAILURE);
+  }
+  map->size = 0;
+  map->table_size = table_size;
+  map->table = ck_alloc(table_size * sizeof(struct key_value_pair*));
+  if (map->table == NULL) {
+    printf("Memory allocation failed.\n");
+    exit(EXIT_FAILURE);
+  }
+  for (u32 i = 0; i < table_size; i++) {
+    map->table[i] = NULL;
+  }
+  return map;
+}
+
+u32 hashmap_fit(u32 key, u32 table_size) {
+  return key % table_size;
+}
+
+void hashmap_resize(struct hashmap *map) {
+
+  u32 new_table_size = map->table_size * 2;
+  struct key_value_pair **new_table = ck_alloc(new_table_size * sizeof(struct key_value_pair*));
+  if (new_table == NULL) {
+    printf("Memory allocation failed.\n");
+    exit(EXIT_FAILURE);
+  }
+  for (u32 i = 0; i < map->table_size; i++) {
+    struct key_value_pair* pair = map->table[i];
+    while (pair != NULL) {
+      struct key_value_pair *next = pair->next;
+      u32 index = hashmap_fit(pair->key, new_table_size);
+      pair->next = new_table[index];
+      new_table[index] = pair;
+      pair = next;
+    }
+  }
+  ck_free(map->table);
+  map->table = new_table;
+  map->table_size = new_table_size;
+
+}
+
+u32 hashmap_size(struct hashmap* map) {
+  return map->size;
+}
+
+// Function to insert a key-value pair into the hash map
+void hashmap_insert(struct hashmap* map, u32 key, void* value) {
+  u32 index = hashmap_fit(key, map->table_size);
+  struct key_value_pair* newPair = ck_alloc(sizeof(struct key_value_pair));
+  if (newPair == NULL) {
+    printf("Memory allocation failed.\n");
+    exit(EXIT_FAILURE);
+  }
+  newPair->key = key;
+  newPair->value = value;
+  newPair->next = map->table[index];
+  map->table[index] = newPair;
+  map->size++;
+  if (map->size > map->table_size / 2) {
+    hashmap_resize(map);
+  }
+}
+
+void hashmap_remove(struct hashmap *map, u32 key) {
+  u32 index = hashmap_fit(key, map->table_size);
+  struct key_value_pair* pair = map->table[index];
+  struct key_value_pair* prev = NULL;
+  while (pair != NULL) {
+    if (pair->key == key) {
+      if (!prev) {
+        map->table[index] = pair->next;
+      } else {
+        prev->next = pair->next;
+      }
+      map->size--;
+      ck_free(pair);
+      return;
+    }
+    prev = pair;
+    pair = pair->next;
+  }
+}
+
+struct key_value_pair* hashmap_get(struct hashmap* map, u32 key) {
+  u32 index = hashmap_fit(key, map->table_size);
+  struct key_value_pair* pair = map->table[index];
+  while (pair != NULL) {
+    if (pair->key == key) {
+      return pair;
+    }
+    pair = pair->next;
+  }
+  return NULL;
+}
+
+void hashmap_free(struct hashmap* map) {
+  for (u32 i = 0; i < map->table_size; i++) {
+    struct key_value_pair* pair = map->table[i];
+    while (pair != NULL) {
+      struct key_value_pair* next = pair->next;
+      ck_free(pair);
+      pair = next;
+    }
+  }
+  ck_free(map->table);
+  ck_free(map);
+}
+
+static u32 hash_file(u8 *filename) {
+
+  FILE *file = fopen(filename, "r");
+
+  if (!file) {
+    WARNF("Cannot open file %s", filename);
+    return 0;
+  }
+
+  fseek(file, 0, SEEK_END);
+  u64 length = ftell(file);
+  fseek(file, 0, SEEK_SET);
+
+  u64 max_read = 1 << 25; // 32MB
+  length = length < max_read ? length : max_read;
+
+  u8 *buf = ck_alloc_nozero(length);
+  fread(buf, 1, length, file);
+  fclose(file);
+
+  u32 hash = hash32(buf, length, HASH_CONST);
+  ck_free(buf);
+  return hash;
+
+}
+
+/* PacFuzz : We implemented a new function that separated with run_target
+   to run the valuation binary. The reason is that we don't want shared memories
+   being affected by the valuation binary. So we removed everything related to
+   forkserver and shared memories. */
+
+static s32 child_pid = -1;
+static volatile u8 child_timed_out = 0;
+static u8          kill_signal; /* Signal that killed the child     */
+static s32
+    dev_urandom_fd = -1,   /* Persistent fd for /dev/urandom   */
+    dev_null_fd = -1;      /* Persistent fd for /dev/null      */
+
+static s32 out_dir_fd = -1;  /* FD of the lock file              */
+
+static u8 run_valuation_binary(afl_state_t *afl, char** argv, u32 timeout, char* env_opt) {
+
+  static struct itimerval it;
+  static u32 prev_timed_out = 0;
+  static u64 exec_ms = 0;
+
+  // Initialize
+  if (dev_urandom_fd < 0) {
+    dev_urandom_fd = open("/dev/urandom", O_RDONLY);
+    if (dev_urandom_fd < 0) PFATAL("[PacFuzz] [run_valuation_binary] Unable to open /dev/urandom");
+  }
+
+  if (dev_null_fd < 0) {
+    dev_null_fd = open("/dev/null", O_RDWR);
+    if (dev_null_fd < 0) PFATAL("[PacFuzz] [run_valuation_binary] Unable to open /dev/null");
+  }
+
+  if (out_dir_fd < 0) {
+    out_dir_fd = open(afl->out_dir, O_RDONLY);
+    if (out_dir_fd < 0) PFATAL("[PacFuzz] [run_valuation_binary] Unable to open out_dir");
+  }
+
+  u8 uses_asan = afl->fsrv.uses_asan;
+
+  int status = 0;
+  u8 is_run_failed;
+
+  child_timed_out = 0;
+  child_pid = fork();
+  
+  if (child_pid < 0) PFATAL("[PacFuzz] [run_valuation_binary] fork() failed");
+
+    if (!child_pid) {
+
+      struct rlimit r;
+
+      r.rlim_max = r.rlim_cur = 0;
+
+      setrlimit(RLIMIT_CORE, &r); /* Ignore errors */
+
+      /* Isolate the process and configure standard descriptors. If out_file is
+         specified, stdin is /dev/null; otherwise, out_fd is cloned instead. */
+
+      setsid();
+
+      dup2(dev_null_fd, 1);
+      dup2(dev_null_fd, 2);
+
+      dup2(dev_null_fd, 0);
+
+
+      /* On Linux, would be faster to use O_CLOEXEC. Maybe TODO. */
+
+      close(dev_null_fd);
+      close(out_dir_fd);
+      close(dev_urandom_fd);
+
+      /* Set sane defaults for ASAN if nothing else specified. */
+
+      char *envp[] =
+      {
+          "ASAN_OPTIONS=abort_on_error=1:halt_on_error=1:detect_leaks=0:symbolize=0:allocator_may_return_null=1",
+          "MSAN_OPTIONS=exit_code=86:halt_on_error=1:symbolize=0:msan_track_origins=0",
+          "UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1:exit_code=54:print_stacktrace=1",
+          env_opt,
+          0
+      };
+
+      execve(argv[0], argv, envp);
+
+      /* Use a distinctive bitmap value to tell the parent about execv()
+         falling through. */
+
+      // LOGF("[PacFuzz] [run_valuation_binary] execv() failed\n");
+      is_run_failed = 1;
+      exit(0);
+    }
+
+  /* Configure timeout, as requested by user, then wait for child to terminate. */
+
+  it.it_value.tv_sec = (timeout / 1000);
+  it.it_value.tv_usec = (timeout % 1000) * 1000;
+
+  setitimer(ITIMER_REAL, &it, NULL);
+
+  /* The SIGALRM handler simply kills the child_pid and sets child_timed_out. */
+
+  if (waitpid(child_pid, &status, 0) <= 0) PFATAL("[PacFuzz] [run_valuation_binary] waitpid() failed");
+
+  if (!WIFSTOPPED(status)) child_pid = 0;
+
+  getitimer(ITIMER_REAL, &it);
+  exec_ms = (u64) timeout - (it.it_value.tv_sec * 1000 +
+                             it.it_value.tv_usec / 1000);
+
+  it.it_value.tv_sec = 0;
+  it.it_value.tv_usec = 0;
+
+  setitimer(ITIMER_REAL, &it, NULL);
+
+  prev_timed_out = child_timed_out;
+
+  /* Report outcome to caller. */
+
+  if (WIFSIGNALED(status)) {
+
+    kill_signal = WTERMSIG(status);
+
+    if (child_timed_out && kill_signal == SIGKILL) return FAULT_TMOUT;
+
+    return FAULT_CRASH;
+
+  }
+
+  /* A somewhat nasty hack for MSAN, which doesn't support abort_on_error and
+     must use a special exit code. */
+
+  if (uses_asan && WEXITSTATUS(status) == MSAN_ERROR) {
+    kill_signal = 0;
+    return FAULT_CRASH;
+  }
+
+  if (is_run_failed)
+    return FAULT_ERROR;
+
+  return FAULT_NONE;
+
+}
+
+u8 get_valuation(afl_state_t *afl, char** argv, u8* use_mem, u32 len, u8 crashed) {
+  if (afl->fsrv.trace_targets->num > 0) {
+    u32 val_hash;
+    u8 *valuation_file;
+    u8 success = run_valuation(afl, crashed, argv, use_mem, len, &val_hash, &valuation_file);
+    if (success) {
+      save_valuation(afl, val_hash, valuation_file, crashed);
+    }
+    return success;
+  }
+  return 0;
+}
+
+u8 run_valuation(afl_state_t *afl, u8 crashed, char** argv, void* mem, u32 len, u32 *val_hash, u8 **valuation_file) {
+  u8 *valexe = "";
+  u8 *covdir = "";
+  u8 *tmpfile = "";
+  u8 *tmpfile_env = "";
+  u8 fault_tmp;
+  u8 *tmp_argv1 = "";
+  u32 num = 1 + rand_below(afl, ARITH_MAX);
+
+  *val_hash = 0;
+  *valuation_file = NULL;
+
+  if(!getenv("PACFIX_VAL_EXE")) return 0;
+  if(!getenv("PACFIX_COV_DIR")) return 0;
+
+  valexe = getenv("PACFIX_VAL_EXE");
+  covdir = getenv("PACFIX_COV_DIR");
+
+  tmpfile = alloc_printf((crashed ? "%s/__valuation_file_%llu" : "%s/__valuation_file_noncrash_%llu"), covdir, (crashed ? afl->total_saved_crashes : afl->total_saved_positives));
+  tmpfile_env = alloc_printf("PACFIX_FILENAME=%s", tmpfile);
+
+  // Remove covdir + "/__tmp_file" (It might not exist, but that's okay)
+  chmod(tmpfile,0777);
+  u8 error_code = remove(tmpfile);
+
+  (void)write_to_testcase(afl, &mem, len, 0);
+
+  tmp_argv1 = argv[0];
+  argv[0] = valexe;
+  fault_tmp = run_valuation_binary(afl, argv, 10000, tmpfile_env);
+  argv[0] = tmp_argv1;
+  ck_free(tmpfile_env);
+
+  // LOGF("[PacFuzz] [run_valuation] [run-completed] [fault %s] [time %llu]\n", fault_str[fault_tmp], get_cur_time() - start_time);
+
+  if (fault_tmp == FAULT_TMOUT || access(tmpfile, F_OK) != 0) {
+    // LOGF("[PacFuzz] [run_valuation] [timeout %d] [no-file %d] [time %llu]\n", fault_tmp == FAULT_TMOUT, access(tmpfile, F_OK) != 0, get_cur_time() - start_time);
+    ck_free(tmpfile);
+    return 0;
+  }
+
+  u32 hash = hash_file(tmpfile);
+
+  // Check if the hash is already in the hash table
+  struct key_value_pair *kvp = hashmap_get(afl->value_map, hash);
+  if (kvp) {
+    // LOGF("[PacFuzz] [run_valuation] [hash %u] [already-exist] [time %llu]\n", hash, get_cur_time() - start_time);
+    remove(tmpfile);
+    ck_free(tmpfile);
+    return 0;
+  }
+  hashmap_insert(afl->value_map, hash, NULL);
+
+  *valuation_file = tmpfile;
+  *val_hash = hash;
+  return 1;
+}
+
+
+void save_valuation(afl_state_t *afl, u32 val_hash, u8 *valuation_file, u8 crashed) {
+  u8 *target_file = alloc_printf(
+      "memory/%s/id:%06llu", crashed ? "neg" : "pos",
+      crashed ? afl->total_saved_crashes : afl->total_saved_positives);
+  ACTF("Valuation file saved as '%s'", target_file);
+  u8 *target_file_full = alloc_printf("%s/%s", afl->out_dir, target_file);
+  rename(valuation_file, target_file_full);
+  ck_free(valuation_file);
+  ck_free(target_file);
+  ck_free(target_file_full);
+  if (crashed) {
+    afl->total_saved_crashes++;
+  } else {
+    afl->total_saved_positives++;
+  }
+}

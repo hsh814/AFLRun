@@ -436,6 +436,35 @@ struct foreign_sync {
 
 };
 
+// Hashmap
+struct key_value_pair {
+  u32 key;
+  void* value;
+  struct key_value_pair* next;
+};
+
+struct hashmap {
+  u32 size;
+  u32 table_size;
+  struct key_value_pair** table;
+};
+
+struct hashmap *hashmap_create(u32 table_size);
+u32 hashmap_fit(u32 key, u32 table_size);
+
+void hashmap_resize(struct hashmap *map);
+
+u32 hashmap_size(struct hashmap *map);
+
+// Function to insert a key-value pair into the hash map
+void hashmap_insert(struct hashmap *map, u32 key, void *value);
+
+void hashmap_remove(struct hashmap *map, u32 key);
+
+struct key_value_pair *hashmap_get(struct hashmap *map, u32 key);
+void hashmap_free(struct hashmap *map);
+
+
 typedef struct afl_state {
 
   /* Position of this state in the global states list */
@@ -838,6 +867,9 @@ typedef struct afl_state {
   double trim_thr, queue_quant_thr;
 
   char* temp_dir;
+
+  struct hashmap *value_map;
+  u64 total_saved_crashes, total_saved_positives;
 
 } afl_state_t;
 
@@ -1357,6 +1389,19 @@ void queue_testcase_retake_mem(afl_state_t *afl, struct queue_entry *q, u8 *in,
 void queue_testcase_store_mem(afl_state_t *afl, struct queue_entry *q, u8 *mem);
 u32 select_aflrun_seeds(afl_state_t *afl);
 int cmp_quant_score(const void* a, const void* b);
+
+enum {
+  /* 00 */ FAULT_NONE,
+  /* 01 */ FAULT_TMOUT,
+  /* 02 */ FAULT_CRASH,
+  /* 03 */ FAULT_ERROR,
+  /* 04 */ FAULT_NOINST,
+  /* 05 */ FAULT_NOBITS
+};
+
+u8 get_valuation(afl_state_t *afl, char** argv, u8* use_mem, u32 len, u8 crashed);
+u8 run_valuation(afl_state_t *afl, u8 crashed, char** argv, void* mem, u32 len, u32 *val_hash, u8 **valuation_file);
+void save_valuation(afl_state_t *afl, u32 val_hash, u8 *valuation_file, u8 crashed);
 
 #if TESTCASE_CACHE == 1
   #error define of TESTCASE_CACHE must be zero or larger than 1

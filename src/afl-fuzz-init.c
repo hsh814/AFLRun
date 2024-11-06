@@ -904,6 +904,9 @@ void perform_dry_run(afl_state_t *afl) {
 
       case FSRV_RUN_OK:
 
+        if (afl->fsrv.num_targets > 0) {
+          get_valuation(afl, afl->argv, use_mem, q->len, 0);
+        }
         if (afl->crash_mode) { FATAL("Test case '%s' does *NOT* crash", fn); }
 
         break;
@@ -949,6 +952,10 @@ void perform_dry_run(afl_state_t *afl) {
         }
 
       case FSRV_RUN_CRASH:
+
+        if (afl->fsrv.num_targets > 0) {
+          get_valuation(afl, afl->argv, use_mem, q->len, 1);
+        }
 
         if (afl->crash_mode) { break; }
 
@@ -1822,6 +1829,14 @@ static void handle_existing_out_dir(afl_state_t *afl) {
   if (delete_files(fn, NULL)) { goto dir_cleanup_failed; }
   ck_free(fn);
 
+  fn = alloc_printf("%s/memory/neg", afl->out_dir);
+  if (delete_files(fn, NULL)) { goto dir_cleanup_failed; }
+  ck_free(fn);
+
+  fn = alloc_printf("%s/memory/pos", afl->out_dir);
+  if (delete_files(fn, NULL)) { goto dir_cleanup_failed; }
+  ck_free(fn);
+
   /* And now, for some finishing touches. */
 
   if (afl->file_extension) {
@@ -2045,6 +2060,19 @@ void setup_dirs_fds(afl_state_t *afl) {
   /* All recorded hangs. */
 
   tmp = alloc_printf("%s/hangs", afl->out_dir);
+  if (mkdir(tmp, 0700)) { PFATAL("Unable to create '%s'", tmp); }
+  ck_free(tmp);
+
+  /* Valuations */
+  tmp = alloc_printf("%s/memory", afl->out_dir);
+  if (mkdir(tmp, 0700)) { PFATAL("Unable to create '%s'", tmp); }
+  ck_free(tmp);
+
+  tmp = alloc_printf("%s/memory/neg", afl->out_dir);
+  if (mkdir(tmp, 0700)) { PFATAL("Unable to create '%s'", tmp); }
+  ck_free(tmp);
+
+  tmp = alloc_printf("%s/memory/pos", afl->out_dir);
   if (mkdir(tmp, 0700)) { PFATAL("Unable to create '%s'", tmp); }
   ck_free(tmp);
 
