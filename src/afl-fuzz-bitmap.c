@@ -529,8 +529,19 @@ save_if_interesting(afl_state_t *afl, void *mem, u32 len, u8 fault, u8 inc) {
 
   }
 
+  u8 is_unique = 0;
   if (fault == FSRV_RUN_CRASH || fault == FSRV_RUN_OK) {
-    get_valuation(afl, afl->argv, mem, len, fault == FSRV_RUN_CRASH);
+    is_unique = get_valuation(afl, afl->argv, mem, len, fault == FSRV_RUN_CRASH);
+    if (is_unique) {
+      snprintf(fn, PATH_MAX, "%s/memory/input/%s_%06llu_%s", afl->out_dir,
+        (fault == FSRV_RUN_CRASH) ? "neg" : "pos", 
+        (fault == FSRV_RUN_CRASH) ? afl->total_saved_crashes : afl->total_saved_positives,
+        describe_op(afl, 0, 0, NAME_MAX - strlen("neg_000000_")));
+      fd = open(fn, O_WRONLY | O_CREAT | O_EXCL, DEFAULT_PERMISSION);
+      if (unlikely(fd < 0)) { PFATAL("Unable to create '%s'", fn); }
+      ck_write(fd, mem, len, fn);
+      close(fd);
+    }
   }
 
   if (likely(fault == afl->crash_mode)) {
@@ -929,6 +940,8 @@ save_if_interesting(afl_state_t *afl, void *mem, u32 len, u8 fault, u8 inc) {
       return keeping;
 
   }
+
+  if (is_unique) { return keeping; } // Already saved
 
   /* If we're here, we apparently want to save the crash or hang
      test case, too. */
