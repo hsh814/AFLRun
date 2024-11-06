@@ -908,8 +908,8 @@ void perform_dry_run(afl_state_t *afl) {
           u8 is_unique = get_valuation(afl, afl->argv, use_mem, q->len, 0);
           if (is_unique) {
             PAC_LOGF(afl->pacfix_log,
-                     "[valuation] [dry-run] [val %s/memory/pos/id:%06llu] [file %s] "
-                     "[time %llu]\n", afl->sync_id,
+                     "[valuation] [dry-run] [val memory/pos/id:%06llu] [file %s] "
+                     "[time %llu]\n",
                      afl->total_saved_positives, q->fname,
                      get_cur_time() - afl->start_time);
           }

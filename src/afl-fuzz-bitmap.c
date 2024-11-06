@@ -540,9 +540,9 @@ save_if_interesting(afl_state_t *afl, void *mem, u32 len, u8 fault, u8 inc) {
                is_crash ? afl->total_saved_crashes : afl->total_saved_positives,
                dop);
 
-      PAC_LOGF(afl->pacfix_log, "[valuation] [uniq] [val %s/memory/%s/id:%06llu] [file %s/memory/input/%s_%06llu_%s] [time %llu]\n",
-        afl->sync_id, is_crash ? "neg" : "pos", is_crash ? afl->total_saved_crashes : afl->total_saved_positives,
-        afl->sync_id, is_crash ? "neg" : "pos", is_crash ? afl->total_saved_crashes : afl->total_saved_positives,
+      PAC_LOGF(afl->pacfix_log, "[valuation] [uniq] [val memory/%s/id:%06llu] [file memory/input/%s_%06llu_%s] [time %llu]\n",
+        is_crash ? "neg" : "pos", is_crash ? afl->total_saved_crashes : afl->total_saved_positives,
+        is_crash ? "neg" : "pos", is_crash ? afl->total_saved_crashes : afl->total_saved_positives,
         dop, get_cur_time() - afl->start_time);
 
       fd = open(fn, O_WRONLY | O_CREAT | O_EXCL, DEFAULT_PERMISSION);
