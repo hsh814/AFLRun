@@ -268,6 +268,10 @@ static inline const char *colorfilter(const char *x) {
                               \
   } while (0)
 
+#define ACTF_NNL(x...) do { \
+    SAYF(cLBL "[*] " cRST x); \
+  } while (0)
+
 /* Show a prefixed "success" message. */
 
 #define OKF(x...)             \
@@ -341,6 +345,15 @@ static inline const char *colorfilter(const char *x) {
       FATAL(x);            \
                            \
   } while (0)
+
+#define PAC_LOGF(f, x...) \
+  do {                    \
+    ACTF_NNL(x);              \
+    if (f) {              \
+      fprintf(f, x);      \
+    }                     \
+  } while (0)
+
 
 /* Show a prefixed debug output. */
 

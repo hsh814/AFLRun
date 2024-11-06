@@ -531,12 +531,20 @@ save_if_interesting(afl_state_t *afl, void *mem, u32 len, u8 fault, u8 inc) {
 
   u8 is_unique = 0;
   if (fault == FSRV_RUN_CRASH || fault == FSRV_RUN_OK) {
-    is_unique = get_valuation(afl, afl->argv, mem, len, fault == FSRV_RUN_CRASH);
+    u8 is_crash = fault == FSRV_RUN_CRASH;
+    is_unique = get_valuation(afl, afl->argv, mem, len, is_crash);
     if (is_unique) {
+      u8 *dop = describe_op(afl, 0, 0, NAME_MAX - strlen("neg_000000_"));
       snprintf(fn, PATH_MAX, "%s/memory/input/%s_%06llu_%s", afl->out_dir,
-        (fault == FSRV_RUN_CRASH) ? "neg" : "pos", 
-        (fault == FSRV_RUN_CRASH) ? afl->total_saved_crashes : afl->total_saved_positives,
-        describe_op(afl, 0, 0, NAME_MAX - strlen("neg_000000_")));
+               is_crash ? "neg" : "pos",
+               is_crash ? afl->total_saved_crashes : afl->total_saved_positives,
+               dop);
+
+      PAC_LOGF(afl->pacfix_log, "[valuation] [uniq] [val %s/memory/%s/id:%06llu] [file %s/memory/input/%s_%06llu_%s] [time %llu]\n",
+        afl->sync_id, is_crash ? "neg" : "pos", is_crash ? afl->total_saved_crashes : afl->total_saved_positives,
+        afl->sync_id, is_crash ? "neg" : "pos", is_crash ? afl->total_saved_crashes : afl->total_saved_positives,
+        dop, get_cur_time() - afl->start_time);
+
       fd = open(fn, O_WRONLY | O_CREAT | O_EXCL, DEFAULT_PERMISSION);
       if (unlikely(fd < 0)) { PFATAL("Unable to create '%s'", fn); }
       ck_write(fd, mem, len, fn);
@@ -1331,18 +1339,17 @@ u8 run_valuation(afl_state_t *afl, u8 crashed, char** argv, void* mem, u32 len, 
 
 
 void save_valuation(afl_state_t *afl, u32 val_hash, u8 *valuation_file, u8 crashed) {
-  u8 *target_file = alloc_printf(
-      "memory/%s/id:%06llu", crashed ? "neg" : "pos",
-      crashed ? afl->total_saved_crashes : afl->total_saved_positives);
-  ACTF("Valuation file saved as '%s'", target_file);
-  u8 *target_file_full = alloc_printf("%s/%s", afl->out_dir, target_file);
-  rename(valuation_file, target_file_full);
-  ck_free(valuation_file);
-  ck_free(target_file);
-  ck_free(target_file_full);
   if (crashed) {
     afl->total_saved_crashes++;
   } else {
     afl->total_saved_positives++;
   }
+  u8 *target_file = alloc_printf(
+      "memory/%s/id:%06llu", crashed ? "neg" : "pos",
+      crashed ? afl->total_saved_crashes : afl->total_saved_positives);
+  u8 *target_file_full = alloc_printf("%s/%s", afl->out_dir, target_file);
+  rename(valuation_file, target_file_full);
+  ck_free(valuation_file);
+  ck_free(target_file);
+  ck_free(target_file_full);
 }

@@ -905,7 +905,14 @@ void perform_dry_run(afl_state_t *afl) {
       case FSRV_RUN_OK:
 
         if (afl->fsrv.num_targets > 0) {
-          get_valuation(afl, afl->argv, use_mem, q->len, 0);
+          u8 is_unique = get_valuation(afl, afl->argv, use_mem, q->len, 0);
+          if (is_unique) {
+            PAC_LOGF(afl->pacfix_log,
+                     "[valuation] [dry-run] [val %s/memory/pos/id:%06llu] [file %s] "
+                     "[time %llu]\n", afl->sync_id,
+                     afl->total_saved_positives, q->fname,
+                     get_cur_time() - afl->start_time);
+          }
         }
         if (afl->crash_mode) { FATAL("Test case '%s' does *NOT* crash", fn); }
 
@@ -954,7 +961,14 @@ void perform_dry_run(afl_state_t *afl) {
       case FSRV_RUN_CRASH:
 
         if (afl->fsrv.num_targets > 0) {
-          get_valuation(afl, afl->argv, use_mem, q->len, 1);
+          u8 is_unique = get_valuation(afl, afl->argv, use_mem, q->len, 1);
+          if (is_unique) {
+            PAC_LOGF(afl->pacfix_log,
+                     "[valuation] [dry-run] [val %s/memory/neg/id:%06llu] [file %s] "
+                     "[time %llu]\n", afl->sync_id,
+                     afl->total_saved_crashes, q->fname,
+                     get_cur_time() - afl->start_time);
+          }
         }
 
         if (afl->crash_mode) { break; }
@@ -1841,6 +1855,14 @@ static void handle_existing_out_dir(afl_state_t *afl) {
   if (delete_files(fn, NULL)) { goto dir_cleanup_failed; }
   ck_free(fn);
 
+  fn = alloc_printf("%s/memory", afl->out_dir);
+  if (rmdir(fn) && errno != ENOENT) { goto dir_cleanup_failed; }
+  ck_free(fn);
+
+  fn = alloc_printf("%s/pacfix.log", afl->out_dir);
+  unlink(fn);
+  ck_free(fn);
+
   /* And now, for some finishing touches. */
 
   if (afl->file_extension) {
@@ -2082,6 +2104,12 @@ void setup_dirs_fds(afl_state_t *afl) {
 
   tmp = alloc_printf("%s/memory/input", afl->out_dir);
   if (mkdir(tmp, 0700)) { PFATAL("Unable to create '%s'", tmp); }
+  ck_free(tmp);
+
+  tmp = alloc_printf("%s/pacfix.log", afl->out_dir);
+  int fd = open(tmp, O_CREAT | O_RDWR, 0644);
+  if (fd < 0) FATAL("cannot create %s", tmp);
+  afl->pacfix_log = fdopen(fd, "w");
   ck_free(tmp);
 
   /* Generally useful file descriptors. */

@@ -129,6 +129,7 @@ void afl_state_init(afl_state_t *afl, uint32_t map_size) {
   afl->value_map = hashmap_create(4096);
   afl->total_saved_crashes = 0;
   afl->total_saved_positives = 0;
+  afl->pacfix_log = NULL;
 
   afl->fsrv.use_stdin = 1;
   afl->fsrv.map_size = map_size;
