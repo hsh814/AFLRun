@@ -47,4 +47,4 @@ export PATH_TO_INSTALL="$PWD/thirdparty/install"
 export PATH="$PATH_TO_INSTALL/bin:$PATH"
 export LD_LIBRARY_PATH="$PATH_TO_INSTALL/lib:$LD_LIBRARY_PATH"
 hash -r
-LLVM_CONFIG="$PATH_TO_INSTALL/bin/llvm-config" CC="$PATH_TO_INSTALL/bin/clang" CXX="$PATH_TO_INSTALL/bin/clang++" make clean all -j 32
+LLVM_CONFIG="$PATH_TO_INSTALL/bin/llvm-config" CC="$PATH_TO_INSTALL/bin/clang" CXX="$PATH_TO_INSTALL/bin/clang++" make ASAN_BUILD=1 CFLGAS="-g -O0" CXXFLAGS="-g -O0" all -j 32
