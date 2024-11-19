@@ -1173,6 +1173,16 @@ static u8 run_valuation_binary(afl_state_t *afl, char** argv, u32 timeout, char*
 
       struct rlimit r;
 
+#ifdef RLIMIT_AS
+
+      setrlimit(RLIMIT_AS, &r); /* Ignore errors */
+
+#else
+
+      setrlimit(RLIMIT_DATA, &r); /* Ignore errors */
+
+#endif /* ^RLIMIT_AS */
+
       r.rlim_max = r.rlim_cur = 0;
 
       setrlimit(RLIMIT_CORE, &r); /* Ignore errors */
@@ -1185,8 +1195,12 @@ static u8 run_valuation_binary(afl_state_t *afl, char** argv, u32 timeout, char*
       dup2(dev_null_fd, 1);
       dup2(dev_null_fd, 2);
 
-      dup2(dev_null_fd, 0);
-
+      if (afl->fsrv.out_file) {
+        dup2(dev_null_fd, 0);
+      } else {
+        dup2(out_dir_fd, 0);
+        close(afl->fsrv.out_fd);
+      }
 
       /* On Linux, would be faster to use O_CLOEXEC. Maybe TODO. */
 
@@ -1267,6 +1281,7 @@ static u8 run_valuation_binary(afl_state_t *afl, char** argv, u32 timeout, char*
 }
 
 u8 get_valuation(afl_state_t *afl, char** argv, u8* use_mem, u32 len, u8 crashed) {
+  ACTF("[PacFuzz] [targets] [num %d] [time %llu]", afl->fsrv.trace_targets->num, get_cur_time() - afl->start_time);
   if (afl->fsrv.trace_targets->num > 0) {
     u32 val_hash;
     u8 *valuation_file;
