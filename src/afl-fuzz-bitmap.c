@@ -24,6 +24,7 @@
  */
 
 #include "afl-fuzz.h"
+#include "debug.h"
 #include "aflrun.h"
 #include <limits.h>
 #if !defined NAME_MAX
@@ -1172,17 +1173,6 @@ static u8 run_valuation_binary(afl_state_t *afl, char** argv, u32 timeout, char*
     if (!child_pid) {
 
       struct rlimit r;
-
-#ifdef RLIMIT_AS
-
-      setrlimit(RLIMIT_AS, &r); /* Ignore errors */
-
-#else
-
-      setrlimit(RLIMIT_DATA, &r); /* Ignore errors */
-
-#endif /* ^RLIMIT_AS */
-
       r.rlim_max = r.rlim_cur = 0;
 
       setrlimit(RLIMIT_CORE, &r); /* Ignore errors */
@@ -1209,15 +1199,16 @@ static u8 run_valuation_binary(afl_state_t *afl, char** argv, u32 timeout, char*
       close(dev_urandom_fd);
 
       /* Set sane defaults for ASAN if nothing else specified. */
-
-      char *envp[] =
-      {
-          "ASAN_OPTIONS=abort_on_error=1:halt_on_error=1:detect_leaks=0:symbolize=0:allocator_may_return_null=1",
-          "MSAN_OPTIONS=exit_code=86:halt_on_error=1:symbolize=0:msan_track_origins=0",
-          "UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1:exit_code=54:print_stacktrace=1",
-          env_opt,
-          0
-      };
+      
+      char *envp[] = {
+          "ASAN_OPTIONS=abort_on_error=1:halt_on_error=1:detect_leaks=0:"
+          "symbolize=0:allocator_may_return_null=1",
+          "MSAN_OPTIONS=exit_code=86:halt_on_error=1:symbolize=0:msan_track_"
+          "origins=0",
+          "UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1:exit_code=54:print_"
+          "stacktrace=1",
+          env_opt, 0};
+      
 
       execve(argv[0], argv, envp);
 
@@ -1225,6 +1216,7 @@ static u8 run_valuation_binary(afl_state_t *afl, char** argv, u32 timeout, char*
          falling through. */
 
       // LOGF("[PacFuzz] [run_valuation_binary] execv() failed\n");
+      PAC_LOGF(afl->pacfix_log, "[PacFuzz] [run_valuation_binary] execv() failed\n");
       is_run_failed = 1;
       exit(0);
     }
@@ -1281,7 +1273,7 @@ static u8 run_valuation_binary(afl_state_t *afl, char** argv, u32 timeout, char*
 }
 
 u8 get_valuation(afl_state_t *afl, char** argv, u8* use_mem, u32 len, u8 crashed) {
-  ACTF("[PacFuzz] [targets] [num %d] [time %llu]", afl->fsrv.trace_targets->num, get_cur_time() - afl->start_time);
+  PAC_LOGF(afl->pacfix_log, "[PacFuzz] [targets] [num %d] [time %llu]\n", afl->fsrv.trace_targets->num, get_cur_time() - afl->start_time);
   if (afl->fsrv.trace_targets->num > 0) {
     u32 val_hash;
     u8 *valuation_file;
@@ -1327,10 +1319,10 @@ u8 run_valuation(afl_state_t *afl, u8 crashed, char** argv, void* mem, u32 len, 
   argv[0] = tmp_argv1;
   ck_free(tmpfile_env);
 
-  // LOGF("[PacFuzz] [run_valuation] [run-completed] [fault %s] [time %llu]\n", fault_str[fault_tmp], get_cur_time() - start_time);
+  // PAC_LOGF(afl->pacfix_log, "[PacFuzz] [run_valuation] [run-completed] [fault %d] [time %llu] [val %s] [file %s]\n", fault_tmp, get_cur_time() - afl->start_time, valexe, tmpfile);
 
   if (fault_tmp == FAULT_TMOUT || access(tmpfile, F_OK) != 0) {
-    // LOGF("[PacFuzz] [run_valuation] [timeout %d] [no-file %d] [time %llu]\n", fault_tmp == FAULT_TMOUT, access(tmpfile, F_OK) != 0, get_cur_time() - start_time);
+    // PAC_LOGF(afl->pacfix_log, "[PacFuzz] [run_valuation] [timeout %d] [no-file %d] [time %llu]\n", fault_tmp == FAULT_TMOUT, access(tmpfile, F_OK) != 0, get_cur_time() - afl->start_time);
     ck_free(tmpfile);
     return 0;
   }
@@ -1340,7 +1332,7 @@ u8 run_valuation(afl_state_t *afl, u8 crashed, char** argv, void* mem, u32 len, 
   // Check if the hash is already in the hash table
   struct key_value_pair *kvp = hashmap_get(afl->value_map, hash);
   if (kvp) {
-    // LOGF("[PacFuzz] [run_valuation] [hash %u] [already-exist] [time %llu]\n", hash, get_cur_time() - start_time);
+    // PAC_LOGF(afl->pacfix_log, "[PacFuzz] [run_valuation] [hash %u] [already-exist] [time %llu]\n", hash, get_cur_time() - afl->start_time);
     remove(tmpfile);
     ck_free(tmpfile);
     return 0;
