@@ -1164,6 +1164,7 @@ static u8 run_valuation_binary(afl_state_t *afl, char** argv, u32 timeout, char*
 
   int status = 0;
   u8 is_run_failed;
+  // PAC_LOGF(afl->pacfix_log, "[PacFuzz] [run_valuation_binary] [out_file %s] [out_fd %d]\n", afl->fsrv.out_file ? afl->fsrv.out_file : "", afl->fsrv.out_fd);
 
   child_timed_out = 0;
   child_pid = fork();
@@ -1185,13 +1186,12 @@ static u8 run_valuation_binary(afl_state_t *afl, char** argv, u32 timeout, char*
       dup2(dev_null_fd, 1);
       dup2(dev_null_fd, 2);
 
-      if (afl->fsrv.out_file) {
+      if (!afl->fsrv.use_stdin) {
         dup2(dev_null_fd, 0);
       } else {
-        dup2(out_dir_fd, 0);
+        dup2(afl->fsrv.out_fd, 0);
         close(afl->fsrv.out_fd);
       }
-
       /* On Linux, would be faster to use O_CLOEXEC. Maybe TODO. */
 
       close(dev_null_fd);
