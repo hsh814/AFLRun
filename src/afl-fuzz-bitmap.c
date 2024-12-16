@@ -1274,7 +1274,7 @@ static u8 run_valuation_binary(afl_state_t *afl, char** argv, u32 timeout, char*
 
 u8 get_valuation(afl_state_t *afl, char** argv, u8* use_mem, u32 len, u8 crashed) {
   PAC_LOGF(afl->pacfix_log, "[PacFuzz] [targets] [num %d] [time %llu]\n", afl->fsrv.trace_targets->num, get_cur_time() - afl->start_time);
-  if (afl->fsrv.trace_targets->num > 0) {
+  if (afl->fsrv.trace_targets->num > 0 || (crashed)) {
     u32 val_hash;
     u8 *valuation_file;
     u8 success = run_valuation(afl, crashed, argv, use_mem, len, &val_hash, &valuation_file);
@@ -1322,7 +1322,7 @@ u8 run_valuation(afl_state_t *afl, u8 crashed, char** argv, void* mem, u32 len, 
   // PAC_LOGF(afl->pacfix_log, "[PacFuzz] [run_valuation] [run-completed] [fault %d] [time %llu] [val %s] [file %s]\n", fault_tmp, get_cur_time() - afl->start_time, valexe, tmpfile);
 
   if (fault_tmp == FAULT_TMOUT || access(tmpfile, F_OK) != 0) {
-    // PAC_LOGF(afl->pacfix_log, "[PacFuzz] [run_valuation] [timeout %d] [no-file %d] [time %llu]\n", fault_tmp == FAULT_TMOUT, access(tmpfile, F_OK) != 0, get_cur_time() - afl->start_time);
+    PAC_LOGF(afl->pacfix_log, "[PacFuzz] [run_valuation] [timeout %d] [no-file %d] [time %llu]\n", fault_tmp == FAULT_TMOUT, access(tmpfile, F_OK) != 0, get_cur_time() - afl->start_time);
     ck_free(tmpfile);
     return 0;
   }
@@ -1332,7 +1332,7 @@ u8 run_valuation(afl_state_t *afl, u8 crashed, char** argv, void* mem, u32 len, 
   // Check if the hash is already in the hash table
   struct key_value_pair *kvp = hashmap_get(afl->value_map, hash);
   if (kvp) {
-    // PAC_LOGF(afl->pacfix_log, "[PacFuzz] [run_valuation] [hash %u] [already-exist] [time %llu]\n", hash, get_cur_time() - afl->start_time);
+    PAC_LOGF(afl->pacfix_log, "[PacFuzz] [run_valuation] [hash %u] [already-exist] [time %llu]\n", hash, get_cur_time() - afl->start_time);
     remove(tmpfile);
     ck_free(tmpfile);
     return 0;

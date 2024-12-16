@@ -854,6 +854,7 @@ void read_testcases(afl_state_t *afl, u8 *directory) {
    expected. This is done only for the initial inputs, and only once. */
 
 void perform_dry_run(afl_state_t *afl) {
+  afl->get_val_for_all_crashes = 1;
 
   struct queue_entry *q;
   u32                 cal_failures = 0, idx;
@@ -899,6 +900,9 @@ void perform_dry_run(afl_state_t *afl) {
            q->len, q->bitmap_size, q->exec_us);
 
     }
+    PAC_LOGF(afl->pacfix_log,
+             "[dry-run] [len %u] [size %u] [exec %llu] [file %s] [res %d] [num %d]\n",
+             q->len, q->bitmap_size, q->exec_us, q->fname, res, afl->fsrv.trace_targets->num);
 
     switch (res) {
 
@@ -914,7 +918,7 @@ void perform_dry_run(afl_state_t *afl) {
                      get_cur_time() - afl->start_time);
           }
         }
-        if (afl->crash_mode) { FATAL("Test case '%s' does *NOT* crash", fn); }
+        // if (afl->crash_mode) { FATAL("Test case '%s' does *NOT* crash", fn); }
 
         break;
 
@@ -961,17 +965,34 @@ void perform_dry_run(afl_state_t *afl) {
       case FSRV_RUN_CRASH:
 
         if (afl->fsrv.num_targets > 0) {
+          u8 check = afl->get_val_for_all_crashes;
+          if (check) {
+            afl->get_val_for_all_crashes = 0;
+            u8 check_unique = get_valuation(afl, afl->argv, use_mem, q->len, 1);
+            if (check_unique) { 
+              afl->get_val_for_all_crashes = 0;
+              PAC_LOGF(
+                afl->pacfix_log,
+                "[valuation] [dry-run] [val %s/memory/neg/id:%06llu] [file %s] "
+                "[time %llu]\n",
+                afl->sync_id, afl->total_saved_crashes, q->fname,
+                get_cur_time() - afl->start_time);
+            } else { 
+              afl->get_val_for_all_crashes = 1; 
+            }
+          }
           u8 is_unique = get_valuation(afl, afl->argv, use_mem, q->len, 1);
           if (is_unique) {
-            PAC_LOGF(afl->pacfix_log,
-                     "[valuation] [dry-run] [val %s/memory/neg/id:%06llu] [file %s] "
-                     "[time %llu]\n", afl->sync_id,
-                     afl->total_saved_crashes, q->fname,
-                     get_cur_time() - afl->start_time);
+            PAC_LOGF(
+                afl->pacfix_log,
+                "[valuation] [dry-run] [val %s/memory/neg/id:%06llu] [file %s] "
+                "[time %llu]\n",
+                afl->sync_id, afl->total_saved_crashes, q->fname,
+                get_cur_time() - afl->start_time);
           }
         }
 
-        if (afl->crash_mode) { break; }
+        if (afl->crash_mode || 1) { break; }
 
         if (afl->fsrv.mem_limit) {
 
@@ -1167,6 +1188,9 @@ void perform_dry_run(afl_state_t *afl) {
     }
 
   }
+
+  PAC_LOGF(afl->pacfix_log,
+           "[dry-run] [end] [time %llu] [get-val-all %d]\n", get_cur_time() - afl->start_time, afl->get_val_for_all_crashes);
 
   /* Now we remove all entries from the queue that have a duplicate trace map */
 

@@ -871,6 +871,7 @@ typedef struct afl_state {
   struct hashmap *value_map;
   u64 total_saved_crashes, total_saved_positives;
   FILE           *pacfix_log;
+  u8              get_val_for_all_crashes;
 
 } afl_state_t;
 
