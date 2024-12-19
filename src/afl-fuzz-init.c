@@ -859,6 +859,7 @@ void perform_dry_run(afl_state_t *afl) {
   struct queue_entry *q;
   u32                 cal_failures = 0, idx;
   u8                 *use_mem;
+  u8  tmp_fn[PATH_MAX];
 
   for (idx = 0; idx < afl->queued_items; idx++) {
 
@@ -911,11 +912,20 @@ void perform_dry_run(afl_state_t *afl) {
         if (afl->fsrv.num_targets > 0) {
           u8 is_unique = get_valuation(afl, afl->argv, use_mem, q->len, 0);
           if (is_unique) {
+
+            snprintf(tmp_fn, PATH_MAX, "%s/memory/input/%s_%06llu", afl->out_dir,
+               "pos",
+               afl->total_saved_positives);
             PAC_LOGF(afl->pacfix_log,
-                     "[valuation] [dry-run] [val memory/pos/id:%06llu] [file %s] "
+                     "[valuation] [dry-run] [val memory/pos/id:%06llu] [file %s] [input %s] "
                      "[time %llu]\n",
-                     afl->total_saved_positives, q->fname,
+                     afl->total_saved_positives, q->fname, tmp_fn,
                      get_cur_time() - afl->start_time);
+            int fd = open(tmp_fn, O_WRONLY | O_CREAT | O_EXCL, DEFAULT_PERMISSION);
+            if (unlikely(fd < 0)) { PFATAL("Unable to create '%s'", tmp_fn); }
+            ck_write(fd, use_mem, q->len, tmp_fn);
+            close(fd);
+
           }
         }
         // if (afl->crash_mode) { FATAL("Test case '%s' does *NOT* crash", fn); }
@@ -971,24 +981,40 @@ void perform_dry_run(afl_state_t *afl) {
             u8 check_unique = get_valuation(afl, afl->argv, use_mem, q->len, 1);
             if (check_unique) { 
               afl->get_val_for_all_crashes = 0;
+              snprintf(tmp_fn, PATH_MAX, "%s/memory/input/%s_%06llu", afl->out_dir,
+               "neg",
+               afl->total_saved_crashes);
               PAC_LOGF(
                 afl->pacfix_log,
-                "[valuation] [dry-run] [val %s/memory/neg/id:%06llu] [file %s] "
+                "[valuation] [dry-run] [val %s/memory/neg/id:%06llu] [file %s] [input %s] "
                 "[time %llu]\n",
-                afl->sync_id, afl->total_saved_crashes, q->fname,
+                afl->sync_id, afl->total_saved_crashes, q->fname, tmp_fn,
                 get_cur_time() - afl->start_time);
+              int fd = open(tmp_fn, O_WRONLY | O_CREAT | O_EXCL, DEFAULT_PERMISSION);
+              if (unlikely(fd < 0)) { PFATAL("Unable to create '%s'", tmp_fn); }
+              ck_write(fd, use_mem, q->len, tmp_fn);
+              close(fd);
             } else { 
               afl->get_val_for_all_crashes = 1; 
             }
           }
           u8 is_unique = get_valuation(afl, afl->argv, use_mem, q->len, 1);
           if (is_unique) {
+
+            snprintf(tmp_fn, PATH_MAX, "%s/memory/input/%s_%06llu", afl->out_dir,
+               "neg",
+               afl->total_saved_crashes);
             PAC_LOGF(
                 afl->pacfix_log,
-                "[valuation] [dry-run] [val %s/memory/neg/id:%06llu] [file %s] "
+                "[valuation] [dry-run] [val %s/memory/neg/id:%06llu] [file %s] [input %s] "
                 "[time %llu]\n",
-                afl->sync_id, afl->total_saved_crashes, q->fname,
+                afl->sync_id, afl->total_saved_crashes, q->fname, tmp_fn,
                 get_cur_time() - afl->start_time);
+            int fd = open(tmp_fn, O_WRONLY | O_CREAT | O_EXCL, DEFAULT_PERMISSION);
+            if (unlikely(fd < 0)) { PFATAL("Unable to create '%s'", tmp_fn); }
+            ck_write(fd, use_mem, q->len, tmp_fn);
+            close(fd);
+
           }
         }
 
