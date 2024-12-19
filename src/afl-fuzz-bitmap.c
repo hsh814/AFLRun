@@ -852,6 +852,12 @@ save_if_interesting(afl_state_t *afl, void *mem, u32 len, u8 fault, u8 inc) {
 
       break;
 
+    case FSRV_RUN_OK:
+      if (afl->crash_mode) {
+        goto keep_as_crash;
+      }
+      break;
+
     case FSRV_RUN_CRASH:
 
     keep_as_crash:
@@ -883,9 +889,9 @@ save_if_interesting(afl_state_t *afl, void *mem, u32 len, u8 fault, u8 inc) {
 
 #ifndef SIMPLE_FILES
 
-      snprintf(fn, PATH_MAX, "%s/crashes/id:%06llu,sig:%02u,%s", afl->out_dir,
+      snprintf(fn, PATH_MAX, "%s/crashes/id:%06llu,sig:%02u,%s,%s", afl->out_dir,
                afl->saved_crashes, afl->fsrv.last_kill_signal,
-               describe_op(afl, 0, 0, NAME_MAX - strlen("id:000000,sig:00,")));
+               describe_op(afl, 0, 0, NAME_MAX - strlen("id:000000,sig:00,")), fault ? "neg" : "pos");
 
 #else
 
